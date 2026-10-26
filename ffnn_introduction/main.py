@@ -20,11 +20,11 @@ def main():
     # batch splits. The call to `time.time_ns()` may be replaced with
     # a constant seed if exactly reproductible results ought to be
     # produced.
-    key = jrandom.PRNGKey(time.time_ns())
+    key = jrandom.PRNGKey(42) #time.time_ns()
     keys = jrandom.split(key, 2)
 
     # Build model instance
-    model = tm.build(key=keys[0])
+    model = tm.build(model_type="ffnn", key=keys[0]) #ffnn or icnn
     print(model)
 
     # Load data
@@ -38,7 +38,7 @@ def main():
         model,
         (x_cal, y_cal),
         batch_size=32,
-        steps=1_000,
+        steps=1_0000,
         loss_fn=tl.MSE(),
         history=klax.HistoryCallback(log_every=1),
         key=keys[1],
