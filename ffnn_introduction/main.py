@@ -11,6 +11,7 @@ import time
 import src.tmlsm.losses as tl
 import src.tmlsm.data as td
 import src.tmlsm.models as tm
+import src.tmlsm.data_2d as td2d
 
 now = datetime.datetime.now
 
@@ -38,7 +39,7 @@ def main():
         model,
         (x_cal, y_cal),
         batch_size=32,
-        steps=1_0000,
+        steps=1_000,
         loss_fn=tl.MSE(),
         history=klax.HistoryCallback(log_every=1),
         key=keys[1],
