@@ -8,6 +8,7 @@ import klax
 from matplotlib import pyplot as plt
 import time
 import numpy as np
+import tmlsm.plot_recipes as plot_results
 
 import src.tmlsm.losses_2d as tl2d
 import src.tmlsm.models_2d as tm2d
@@ -28,8 +29,9 @@ def main():
     # Options:
     #   model_choice: "ffnn" or "icnn"[cite: 8]
     #   target_choice: "f1" (saddle: x^2 - y^2) or "f2" (convex: x^2 + 0.5y^2)
-    model_choice = "icnn2d" # ffnn2d or icnn2d
+    model_choice = "icnn2d" # ffnn2d or icnn2d or sobolev_icnn2d
     target_choice = "f2"
+    strategy_name = None
 
     # 2D Data
     coords, f1, f2, grad_f2 = td2d.generate_2d_data()
@@ -43,16 +45,38 @@ def main():
     t1 = now()
     print(t1)
 
-    model, history = klax.fit(
-        model,
-        (coords, y_target),
-        batch_size=32,
-        steps=1_0000,
-        loss_fn=tl2d.MSE(),
-        history=klax.HistoryCallback(log_every=1),
-        key=keys[1],
-    )
+    #select loss function according to the strategy
+    loss_choice = "strategy_3"
 
+    if loss_choice == "strategy_1":
+        loss_fn = tl2d.LossStrategy1_valueOnly()
+    elif loss_choice == "strategy_2":
+        loss_fn = tl2d.LossStrategy2_ValueAndGradient()
+    elif loss_choice == "strategy_3":
+        loss_fn = tl2d.LossStrategy3_GradientOnly()
+    else:
+        raise ValueError("Invalid strategy name")
+
+    if model_choice == "sobolev_icnn2d":
+        model, history = klax.fit(
+            model,
+            (coords, f1, f2, grad_f2),
+            batch_size=32,
+            steps=1_0000,
+            loss_fn=loss_fn,
+            history=klax.HistoryCallback(log_every=100),
+            key=keys[1],
+        )
+    else:
+        model, history = klax.fit(
+            model,
+            (coords, y_target),
+            batch_size=32,
+            steps=1_0000,
+            loss_fn=tl2d.MSE(),
+            history=klax.HistoryCallback(log_every=100),
+            key=keys[1],
+        )
     t2 = now()
     print("it took", t2 - t1, "(sec) to calibrate the model")
 
@@ -63,35 +87,20 @@ def main():
     # wrappers and constraints (if present).
     model_ = klax.finalize(model)
 
-    y_pred = jax.vmap(model)(coords)
+    if model_choice == "sobolev_icnn2d":
+        y_pred, grad_pred = jax.vmap(model)(coords)
+    else:
+        y_pred = jax.vmap(model)(coords)
+        loss_choice = "strategy_1"
+        strategy_name = model_choice
 
-    """Visualize true 2D surface versus model prediction in 3D."""
-    X = coords[:, 0].reshape(20, 20)
-    Y = coords[:, 1].reshape(20, 20)
-    Z_true = np.array(y_target).reshape(20, 20)
-    Z_pred = np.array(y_pred).reshape(20, 20)
-
-    fig = plt.figure(figsize=(12, 5))
-
-    # Ground Truth Surface
-    ax1 = fig.add_subplot(1, 2, 1, projection="3d")
-    ax1.plot_surface(X, Y, Z_true, cmap="viridis", alpha=0.85)
-    ax1.set_title(f"{f"{model_choice.upper()} fitted to {target_choice}"} - Ground Truth")
-    ax1.set_xlabel("x")
-    ax1.set_ylabel("y")
-    ax1.set_zlabel("f(x, y)")
-
-    # Model Prediction Surface
-    ax2 = fig.add_subplot(1, 2, 2, projection="3d")
-    ax2.plot_surface(X, Y, Z_pred, cmap="plasma", alpha=0.85)
-    ax2.set_title(f"{f"{model_choice.upper()} fitted to {target_choice}"} - Model Prediction")
-    ax2.set_xlabel("x")
-    ax2.set_ylabel("y")
-    ax2.set_zlabel("f_pred(x, y)")
-
-    plt.tight_layout()
-    plt.show()
-
+    if loss_choice == "strategy_1":
+        plot_results.plot_evaluation(coords, f2, y_pred, grad_f2, None, 
+                                     strategy_name="values only" if strategy_name is None else strategy_name)
+    elif loss_choice == "strategy_2":
+        plot_results.plot_evaluation(coords, f2, y_pred, grad_f2, grad_pred, strategy_name="values and gradients")
+    elif loss_choice == "strategy_3":
+        plot_results.plot_evaluation(coords, f2, y_pred, grad_f2, grad_pred, strategy_name="gradients only")
 
 
 if __name__ == "__main__":
