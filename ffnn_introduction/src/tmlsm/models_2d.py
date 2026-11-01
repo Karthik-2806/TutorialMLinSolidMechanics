@@ -36,10 +36,11 @@ class FFNN2D(eqx.Module):
 
 class NonNegativeLinear(eqx.Module):
     linear: klax.nn.Linear
+
     
-    def __init__(self, in_features, out_features, *, key: PRNGKeyArray):
+    def __init__(self, in_features, out_features, *, offset: float=2.0, key: PRNGKeyArray):
         self.linear = klax.nn.Linear(
-            in_features, out_features, weight_init=lambda k, s, dtype: he_normal()(k, s, dtype) * 0.1 -2, key=key
+            in_features, out_features, weight_init=lambda k, s, dtype: he_normal()(k, s, dtype)*0.1 - offset, key=key
         )
 
     def __call__(self, x):
@@ -52,12 +53,12 @@ class ICNN2D(eqx.Module):
     layers: tuple[callable, ...]
     activations: tuple[callable, ...]
 
-    def __init__(self, *, key: PRNGKeyArray):
+    def __init__(self, *, offset: float = 2.0, key: PRNGKeyArray):
         self.layers = (
             klax.nn.Linear(2, 16, weight_init=he_normal(), key=key),
-            NonNegativeLinear(16, 16, key=key),
-            NonNegativeLinear(16, 16, key=key),
-            NonNegativeLinear(16, "scalar", key=key)     
+            NonNegativeLinear(16, 16, offset=offset, key=key),
+            NonNegativeLinear(16, 16, offset=offset, key=key),
+            NonNegativeLinear(16, "scalar", offset=offset, key=key)     
         )
         self.activations = (
             jax.nn.softplus,
@@ -82,8 +83,8 @@ class SobolevICNN(eqx.Module):
 
     icnn: ICNN2D
 
-    def __init__(self, *, key):
-        self.icnn = ICNN2D(key=key)
+    def __init__(self, *, offset: float = 0.5, key):
+        self.icnn = ICNN2D(offset=offset, key=key)
 
     def __call__(self, x):
         # output 1: The standard predicted value (scalar)
@@ -98,8 +99,8 @@ class SobolevICNN(eqx.Module):
 def build(*, model_type: str, key: PRNGKeyArray):
 
     if model_type == "icnn2d":
-        return ICNN2D(key=key)
+        return ICNN2D(offset=2.0, key=key)
     elif model_type == "ffnn2d": 
         return FFNN2D(key=key)
     elif model_type == "sobolev_icnn2d":
-        return SobolevICNN(key=key)
+        return SobolevICNN(offset=0.5, key=key)

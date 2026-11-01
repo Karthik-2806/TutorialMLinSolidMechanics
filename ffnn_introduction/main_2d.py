@@ -29,7 +29,7 @@ def main():
     # Options:
     #   model_choice: "ffnn" or "icnn"[cite: 8]
     #   target_choice: "f1" (saddle: x^2 - y^2) or "f2" (convex: x^2 + 0.5y^2)
-    model_choice = "icnn2d" # ffnn2d or icnn2d or sobolev_icnn2d
+    model_choice = "sobolev_icnn2d" # ffnn2d or icnn2d or sobolev_icnn2d
     target_choice = "f2"
     strategy_name = None
 
@@ -88,14 +88,14 @@ def main():
     model_ = klax.finalize(model)
 
     if model_choice == "sobolev_icnn2d":
-        y_pred, grad_pred = jax.vmap(model)(coords)
+        y_pred, grad_pred = jax.vmap(model_)(coords)
     else:
-        y_pred = jax.vmap(model)(coords)
+        y_pred = jax.vmap(model_)(coords)
         loss_choice = "strategy_1"
         strategy_name = model_choice
 
     if loss_choice == "strategy_1":
-        plot_results.plot_evaluation(coords, f2, y_pred, grad_f2, None, 
+        plot_results.plot_evaluation(coords, y_target, y_pred, grad_f2, None, 
                                      strategy_name="values only" if strategy_name is None else strategy_name)
     elif loss_choice == "strategy_2":
         plot_results.plot_evaluation(coords, f2, y_pred, grad_f2, grad_pred, strategy_name="values and gradients")

@@ -43,7 +43,7 @@ class LossStrategy2_ValueAndGradient(eqx.Module):
         y_pred, grad_pred = jax.vmap(model)(coords)
 
         # 1. Error on values
-        loss_val = jnp.mean((jnp.ravel(y_pred) * jnp.ravel(f2_true))**2)
+        loss_val = jnp.mean((jnp.ravel(y_pred) - jnp.ravel(f2_true))**2)
 
         # 2. Error on gradients
         loss_grad = jnp.mean((grad_pred - grad_true)**2)
