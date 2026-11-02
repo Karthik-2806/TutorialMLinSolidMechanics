@@ -1,28 +1,10 @@
 # Tutorial "Machine Learning in Solid Mechanics"
 
-Lecturer: Prof. Dr. rer. nat. Oliver Weeger
-
-Authors: Dr. Ing. Dominik K. Klein; Jasper O. Schommartz, M.Sc.
+Task 1: Feed-forward neural networks
 
 
+Task 1.1 & task 1.2: refer to main.py, models.py, and losses.py
+Task 2.1, 2.2 & 2.3: refer to main_2d.py, models_2d.py, data_2d.py, and losses_2d.py
+Task 2.4           : refer to hyperelasticity_main.py, hyperelasticity_model.py, hyperelasticity_losses.py
 
-Lecture website: [link](https://www.maschinenbau.tu-darmstadt.de/cps/cps_teaching/cps_courses/cps_tutorial_mlsm/index.en.jsp)
-
-Research group website: [link](https://www.maschinenbau.tu-darmstadt.de/cps/department_cps/index.en.jsp)
-
-## Description
-
-This repository offers a collection of lecture material and minimum working code examples based on the tutorial "Machine Learning in Solid Mechanics" by Prof. Dr. rer. nat Oliver Weeger.
-
-## Lecture material
-
-* Task 1: Feed-forward neural networks
-
-## Additional materials
-
-Below you find the links to some helpful resources.
-
-- [The klax repository](https://github.com/drenderer/klax)
-- [The JAX repository](https://github.com/jax-ml/jax)
-- [The Equinox repository](https://github.com/patrick-kidger/equinox)
-- [The uv package manager](https://docs.astral.sh/uv/getting-started/installation/)
+all the plotting function has been defined in plot_recipes.py
