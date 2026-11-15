@@ -1,452 +1,366 @@
-import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
 
-def compute_inplane_stretches(F: jnp.ndarray):
-  """Computes in-plane principal stretches (lambda_1, lambda_2) from the 2x2 in-plane
-
-  submatrix of C = F^T @ F.
-  """
-  C11 = F[:, 0, 0] ** 2 + F[:, 1, 0] ** 2 + F[:, 2, 0] ** 2
-  C22 = F[:, 0, 1] ** 2 + F[:, 1, 1] ** 2 + F[:, 2, 1] ** 2
-  C12 = (
-      F[:, 0, 0] * F[:, 0, 1]
-      + F[:, 1, 0] * F[:, 1, 1]
-      + F[:, 2, 0] * F[:, 2, 1]
-  )
-
-  trace_half = 0.5 * (C11 + C22)
-  diff_half = 0.5 * (C11 - C22)
-  R = jnp.sqrt(jnp.maximum(diff_half**2 + C12**2, 1e-12))
-
-  eig1 = trace_half + jnp.sign(diff_half + 1e-9) * R
-  eig2 = trace_half - jnp.sign(diff_half + 1e-9) * R
-
-  lambda_1 = jnp.sqrt(jnp.maximum(eig1, 1e-12))
-  lambda_2 = jnp.sqrt(jnp.maximum(eig2, 1e-12))
-
-  return lambda_1, lambda_2
-
-
-def compute_equivalent_stress(F: jnp.ndarray, P: jnp.ndarray):
-  """Computes the von Mises equivalent stress sigma_vM from F and P.
-
-  sigma = (1 / det(F)) * P @ F^T
-  s = sigma - (1/3) * tr(sigma) * I
-  sigma_vM = sqrt( 1.5 * s : s )
-  """
-  # Jacobian J = det(F) of shape (N, 1, 1)
-  J = jnp.linalg.det(F)[:, None, None]
-
-  # Cauchy stress: sigma = (1/J) * P @ F^T, shape (N, 3, 3)
-  sigma = (1.0 / J) * jnp.einsum("nij,nkj->nik", P, F)
-
-  # Enforce exact numerical symmetry: sigma = 0.5 * (sigma + sigma^T)
-  sigma = 0.5 * (sigma + jnp.swapaxes(sigma, -1, -2))
-
-  # Hydrostatic pressure: p = (1/3) * tr(sigma)
-  p = (1.0 / 3.0) * jnp.trace(sigma, axis1=1, axis2=2)[:, None, None]
-
-  # Stress deviator: s = sigma - p * I
-  I = jnp.eye(3)[None, :, :]
-  s = sigma - p * I
-
-  # von Mises equivalent stress: sigma_vM = sqrt(1.5 * s_ij * s_ij)
-  s_contracted = jnp.einsum("nij,nij->n", s, s)
-  sigma_vM = jnp.sqrt(jnp.maximum(1.5 * s_contracted, 1e-12))
-
-  return sigma_vM, sigma
-
-
-def plot_3d_constitutive_manifolds(data_dict: dict):
-  """Plots:
-
-  1. 3D Strain energy density landscape W(lambda_1, lambda_2)
-  2. 3D von Mises equivalent stress manifold sigma_vM(lambda_1, lambda_2)
-  """
-  fig = plt.figure(figsize=(16, 7), layout="constrained")
-
-  ax_w = fig.add_subplot(1, 2, 1, projection="3d")
-  ax_p = fig.add_subplot(1, 2, 2, projection="3d")
-
-  for case_name, tensors in data_dict.items():
-    F = tensors["F"]
-    P = tensors["P"]
-    W = tensors["W"]
-
-    # In-plane principal stretches
-    lam1, lam2 = compute_inplane_stretches(F)
-
-    # Calculate von Mises equivalent stress
-    sigma_vM, _ = compute_equivalent_stress(F, P)
-
-    l1_np = np.array(lam1)
-    l2_np = np.array(lam2)
-    w_np = np.array(W)
-    svm_np = np.array(sigma_vM)
-
-    # Plot 1: 3D Energy Landscape Trajectory
-    ax_w.plot(l1_np, l2_np, w_np, linewidth=2.5, label=case_name)
-    ax_w.plot(l1_np, l2_np, np.zeros_like(l1_np), linestyle=":", alpha=0.35)
-
-    # Plot 2: 3D von Mises Equivalent Stress Manifold Trajectory
-    ax_p.plot(l1_np, l2_np, svm_np, linewidth=2.5, label=case_name)
-    ax_p.plot(l1_np, l2_np, np.zeros_like(l1_np), linestyle=":", alpha=0.35)
-
-  # Reference state points (1.0, 1.0, 0.0)
-  ax_w.scatter([1.0], [1.0], [0.0], color="black", s=40, label="Reference")
-  ax_p.scatter([1.0], [1.0], [0.0], color="black", s=40, label="Reference")
-
-  # Styling Energy Plot
-  ax_w.set_title(
-      r"Strain Energy Landscape $W(\lambda_1, \lambda_2)$",
-      fontsize=13,
-      fontweight="bold",
-  )
-  ax_w.set_xlabel(r"Principal Stretch $\lambda_1$ [-]")
-  ax_w.set_ylabel(r"Principal Stretch $\lambda_2$ [-]")
-  ax_w.set_zlabel(r"Energy Density $W$ [$\mathrm{MJ/m^3}$]")
-  ax_w.legend(fontsize=9)
-  ax_w.view_init(elev=28, azim=-125)
-
-  # Styling Stress Plot
-  ax_p.set_title(
-      r"Equivalent Stress Manifold $\sigma_{\mathrm{vM}}(\lambda_1, \lambda_2)$",
-      fontsize=13,
-      fontweight="bold",
-  )
-  ax_p.set_xlabel(r"Principal Stretch $\lambda_1$ [-]")
-  ax_p.set_ylabel(r"Principal Stretch $\lambda_2$ [-]")
-  ax_p.set_zlabel(r"von Mises Stress $\sigma_{\mathrm{vM}}$ [MPa]")
-  ax_p.legend(fontsize=9)
-  ax_p.view_init(elev=28, azim=-125)
-
-  plt.show()
-
-
-def plot_stretch_trajectories(
-    data_dict: dict, title_prefix: str = "Calibration Data"
-):
-  """Plots a separate (lambda_1 vs lambda_2) stretch trajectory for each load case
-
-  side-by-side, including analytical kinematics and the reference point (1, 1).
-  """
-  n_cases = len(data_dict)
-  fig, axes = plt.subplots(
-      1, n_cases, figsize=(5.2 * n_cases, 4.8), layout="constrained"
-  )
-
-  if n_cases == 1:
-    axes = [axes]
-
-  lam_ref = np.linspace(0.45, 2.05, 300)
-
-  for ax, (case_name, tensors) in zip(axes, data_dict.items()):
-    F = tensors["F"]
-    lam1, lam2 = compute_inplane_stretches(F)
-
-    l1 = np.array(lam1)
-    l2 = np.array(lam2)
-
-    ax.plot(
-        l1,
-        l2,
-        color="crimson",
-        linewidth=2.5,
-        label=rf"Data: {case_name}",
-        zorder=4,
-    )
-    ax.scatter(
-        [l1[0], l1[-1]],
-        [l2[0], l2[-1]],
-        color="crimson",
-        s=30,
-        zorder=5,
-        label="Start / End",
-    )
-
-    if "uniaxial" in case_name:
-      ax.plot(
-          lam_ref,
-          lam_ref ** (-0.5),
-          "k--",
-          alpha=0.6,
-          label=r"Theory: $\lambda_2 = \lambda_1^{-1/2}$",
-      )
-    elif "biaxial" in case_name:
-      ax.plot(
-          lam_ref,
-          lam_ref,
-          "k--",
-          alpha=0.6,
-          label=r"Theory: $\lambda_2 = \lambda_1$",
-      )
-    elif "pure_shear" in case_name:
-      ax.plot(
-          lam_ref,
-          1.0 / lam_ref,
-          "k--",
-          alpha=0.6,
-          label=r"Theory: $\lambda_2 = 1/\lambda_1$",
-      )
-    else:
-      ax.plot(
-          lam_ref,
-          lam_ref ** (-0.5),
-          "gray",
-          linestyle=":",
-          alpha=0.5,
-          label=r"Uniaxial bound",
-      )
-      ax.plot(
-          lam_ref,
-          lam_ref,
-          "gray",
-          linestyle="--",
-          alpha=0.5,
-          label=r"Biaxial bound",
-      )
-
-    ax.scatter(
-        [1.0],
-        [1.0],
-        color="black",
-        s=60,
-        zorder=6,
-        label=r"Undeformed $(1, 1)$",
-    )
-    ax.axvline(1.0, color="gray", linewidth=0.8, linestyle=":", alpha=0.5)
-    ax.axhline(1.0, color="gray", linewidth=0.8, linestyle=":", alpha=0.5)
-
-    ax.set_title(f"Load Case: {case_name}", fontsize=12, fontweight="bold")
-    ax.set_xlabel(r"Principal Stretch $\lambda_1$ [-]", fontsize=10)
-    ax.set_ylabel(r"Principal Stretch $\lambda_2$ [-]", fontsize=10)
-    ax.set_xlim(0.4, 2.1)
-    ax.set_ylim(0.4, 2.1)
-    ax.set_aspect("equal", adjustable="box")
-    ax.grid(True, linestyle="--", alpha=0.5)
-    ax.legend(fontsize=8.5, loc="upper right")
-
-  fig.suptitle(
-      f"{title_prefix}: In-Plane Principal Stretch Paths"
-      r" $(\lambda_1\text{--}\lambda_2)$",
-      fontsize=14,
-      fontweight="bold",
-  )
-  plt.show()
-
-def plot_3d_calibration_vs_test(calib_dict: dict, test_dict: dict):
-  """Plots Calibration and Test datasets together on 3D constitutive manifolds
-
-  without duplicate legend entries.
-  """
-  fig = plt.figure(figsize=(16, 7.5), layout="constrained")
-
-  ax_w = fig.add_subplot(1, 2, 1, projection="3d")
-  ax_p = fig.add_subplot(1, 2, 2, projection="3d")
-
-  # ---------------------------------------------------------
-  # 1. Calibration Data Loop (Run once for calib files)
-  # ---------------------------------------------------------
-  for case_name, tensors in calib_dict.items():
-    F = tensors["F"]
-    P = tensors["P"]
-    W = tensors["W"]
-
-    lam1, lam2 = compute_inplane_stretches(F)
-    sigma_vM, _ = compute_equivalent_stress(F, P)
-
-    l1_np = np.array(lam1)
-    l2_np = np.array(lam2)
-    w_np = np.array(W)
-    svm_np = np.array(sigma_vM)
-
-    # 3D curve (has label)
-    ax_w.plot(
-        l1_np,
-        l2_np,
-        w_np,
-        linewidth=2.5,
-        alpha=0.85,
-        label=f"Calib: {case_name}",
-    )
-    # Ground projection (no label)
-    ax_w.plot(l1_np, l2_np, np.zeros_like(l1_np), linestyle=":", alpha=0.25)
-
-    ax_p.plot(
-        l1_np,
-        l2_np,
-        svm_np,
-        linewidth=2.5,
-        alpha=0.85,
-        label=f"Calib: {case_name}",
-    )
-    ax_p.plot(l1_np, l2_np, np.zeros_like(l1_np), linestyle=":", alpha=0.25)
-
-  # ---------------------------------------------------------
-  # 2. Test Data Loop (OUTSIDE the calibration loop)
-  # ---------------------------------------------------------
-  for case_name, tensors in test_dict.items():
-    F = tensors["F"]
-    P = tensors["P"]
-    W = tensors["W"]
-
-    lam1, lam2 = compute_inplane_stretches(F)
-    sigma_vM, _ = compute_equivalent_stress(F, P)
-
-    l1_np = np.array(lam1)
-    l2_np = np.array(lam2)
-    w_np = np.array(W)
-    svm_np = np.array(sigma_vM)
-
-    # Styling per test case
-    if "biax" in case_name:
-      line_style = "--"  # Dashed for biax_test
-      line_color = "darkorange"
-    elif "mixed" in case_name:
-      line_style = ":"  # Dotted for mixed_test
-      line_color = "crimson"
-    else:
-      line_style = "-."
-      line_color = "red"
-
-    # 3D curve (has label)
-    ax_w.plot(
-        l1_np,
-        l2_np,
-        w_np,
-        linewidth=2.8,
-        linestyle=line_style,
-        color=line_color,
-        label=f"Test: {case_name}",
-        zorder=10,
-    )
-    # Ground projection (no label)
-    ax_w.plot(
-        l1_np,
-        l2_np,
-        np.zeros_like(l1_np),
-        linestyle=line_style,
-        color=line_color,
-        alpha=0.45,
-    )
-
-    ax_p.plot(
-        l1_np,
-        l2_np,
-        svm_np,
-        linewidth=2.8,
-        linestyle=line_style,
-        color=line_color,
-        label=f"Test: {case_name}",
-        zorder=10,
-    )
-    ax_p.plot(
-        l1_np,
-        l2_np,
-        np.zeros_like(l1_np),
-        linestyle=line_style,
-        color=line_color,
-        alpha=0.45,
-    )
-
-  # Reference point (1.0, 1.0, 0.0)
-  ax_w.scatter([1.0], [1.0], [0.0], color="black", s=50, label="Reference")
-  ax_p.scatter([1.0], [1.0], [0.0], color="black", s=50, label="Reference")
-
-  # Axes Styling
-  ax_w.set_title(
-      r"Energy Landscape: Calibration vs. Test Data",
-      fontsize=13,
-      fontweight="bold",
-  )
-  ax_w.set_xlabel(r"$\lambda_1$ [-]", fontsize=10)
-  ax_w.set_ylabel(r"$\lambda_2$ [-]", fontsize=10)
-  ax_w.set_zlabel(r"$W$ [$\mathrm{MJ/m^3}$]", fontsize=10)
-  ax_w.legend(fontsize=9, loc="upper left")
-  ax_w.view_init(elev=28, azim=-125)
-
-  ax_p.set_title(
-      r"Stress Manifold: Calibration vs. Test Data",
-      fontsize=13,
-      fontweight="bold",
-  )
-  ax_p.set_xlabel(r"$\lambda_1$ [-]", fontsize=10)
-  ax_p.set_ylabel(r"$\lambda_2$ [-]", fontsize=10)
-  ax_p.set_zlabel(r"$\sigma_{\mathrm{vM}}$ [MPa]", fontsize=10)
-  ax_p.legend(fontsize=9, loc="upper left")
-  ax_p.view_init(elev=28, azim=-125)
-
-  plt.show()
-
-def plot_vonmises_stress_comparison(data_dict: dict, pred_dict: dict, title_prefix: str = "Calibration"):
+# ===========================================================================
+# TASK 1.1: Raw Data Visualization (F, P, W vs. Load Steps)
+# ===========================================================================
+def plot_task1_1_raw_data(dataset_dict: dict, title_prefix: str = "Calibration Data"):
     """
-    Compares true vs. JAX-predicted von Mises equivalent stresses.
-    
-    Parameters
-    ----------
-    data_dict : dict
-        Dictionary containing ground truth tensors {'F', 'P', 'W'} per case.
-    pred_dict : dict
-        Dictionary containing {'P_pred': ...} per case.
-    title_prefix : str
-        Dataset label ('Calibration' or 'Test').
+    Task 1.1: Plots F components, P components, and W scalar vs. Load Steps
+    in a 3-row x N_cases-column grid. No von Mises or principal stretches.
     """
-    n_cases = len(data_dict)
+    n_cases = len(dataset_dict)
     fig, axes = plt.subplots(
-        2, n_cases, 
-        figsize=(5.5 * n_cases, 7.5), 
-        gridspec_kw={"height_ratios": [3, 1.2]},
-        layout="constrained"
+        3, n_cases,
+        figsize=(5.2 * n_cases, 10.5),
+        layout="constrained",
+        sharex="col"
     )
 
     if n_cases == 1:
-        axes = np.array([[axes[0]], [axes[1]]])
+        axes = np.expand_dims(axes, axis=1)
 
-    for col_idx, (case_name, tensors) in enumerate(data_dict.items()):
-        ax_top = axes[0, col_idx]
-        ax_bot = axes[1, col_idx]
+    comp_colors = plt.cm.tab10(np.linspace(0, 1, 9))
+    comp_labels = [
+        (0, 0, "11"), (0, 1, "12"), (0, 2, "13"),
+        (1, 0, "21"), (1, 1, "22"), (1, 2, "23"),
+        (2, 0, "31"), (2, 1, "32"), (2, 2, "33"),
+    ]
 
-        F = tensors["F"]
-        P_true = tensors["P"]
-        P_pred = pred_dict[case_name]["P_pred"]
+    for col, (case_name, data) in enumerate(dataset_dict.items()):
+        F = np.array(data["F"])  # (N, 3, 3)
+        P = np.array(data["P"])  # (N, 3, 3)
+        W = np.array(data["W"])  # (N,)
+        steps = np.arange(len(W))
 
-        # 1. Kinematics and von Mises stresses
-        lam1, _ = compute_inplane_stretches(F)
-        sigma_vM_true, _ = compute_equivalent_stress(F, P_true)
-        sigma_vM_pred, _ = compute_equivalent_stress(F, P_pred)
+        ax_F = axes[0, col]
+        ax_P = axes[1, col]
+        ax_W = axes[2, col]
 
-        l1 = np.array(lam1)
-        svm_true = np.array(sigma_vM_true)
-        svm_pred = np.array(sigma_vM_pred)
-        diff_svm = np.abs(svm_pred - svm_true)
+        # Row 0: Deformation Gradient F_ij vs Load Step
+        for idx, (i, j, lbl) in enumerate(comp_labels):
+            ax_F.plot(
+                steps, F[:, i, j],
+                color=comp_colors[idx], linewidth=1.8,
+                marker="o", markersize=3, markevery=max(1, len(steps) // 15),
+                label=rf"$F_{{{lbl}}}$"
+            )
+        ax_F.set_title(f"Case: {case_name}", fontsize=12, fontweight="bold")
+        ax_F.set_ylabel(r"Deformation Gradient $F_{ij}$ [-]", fontsize=10)
+        ax_F.grid(True, linestyle="--", alpha=0.4)
+        if col == n_cases - 1:
+            ax_F.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), fontsize=8, ncol=1)
 
-        # 2. Top plot: Stress comparison
-        ax_top.plot(l1, svm_true, color="black", linewidth=2.5, label=r"True $\sigma_{\mathrm{vM}}$")
-        ax_top.plot(
-            l1, svm_pred, 
-            color="crimson", linestyle="--", linewidth=2.0, 
-            label=r"JAX $\partial W/\partial\boldsymbol{F}$"
+        # Row 1: First Piola-Kirchhoff Stress P_ij vs Load Step
+        for idx, (i, j, lbl) in enumerate(comp_labels):
+            ax_P.plot(
+                steps, P[:, i, j],
+                color=comp_colors[idx], linewidth=1.8,
+                marker="o", markersize=3, markevery=max(1, len(steps) // 15),
+                label=rf"$P_{{{lbl}}}$"
+            )
+        ax_P.axhline(0.0, color="gray", linestyle=":", linewidth=0.8)
+        ax_P.set_ylabel(r"PK1 Stress $P_{ij}$", fontsize=10)
+        ax_P.grid(True, linestyle="--", alpha=0.4)
+        if col == n_cases - 1:
+            ax_P.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), fontsize=8, ncol=1)
+
+        # Row 2: Strain Energy Density W vs Load Step
+        ax_W.plot(
+            steps, W,
+            color="crimson", linewidth=2.2,
+            marker="o", markersize=3.5, markevery=max(1, len(steps) // 15),
+            label=r"$W$"
         )
-        ax_top.scatter([1.0], [0.0], color="black", s=40, zorder=5, label="Undeformed")
+        ax_W.set_xlabel("Load Step / Time Step", fontsize=10)
+        ax_W.set_ylabel(r"Strain Energy $W$", fontsize=10)
+        ax_W.grid(True, linestyle="--", alpha=0.4)
+        ax_W.legend(loc="upper left", fontsize=9)
 
-        ax_top.set_title(f"Case: {case_name}", fontsize=12, fontweight="bold")
-        ax_top.set_ylabel(r"$\sigma_{\mathrm{vM}}$ [MPa]", fontsize=10)
-        ax_top.grid(True, linestyle="--", alpha=0.5)
-        ax_top.legend(fontsize=9, loc="upper left")
+    fig.suptitle(f"Task 1.1 - {title_prefix}: F, P, and W vs. Load Steps", fontsize=14, fontweight="bold")
+    plt.show()
 
-        # 3. Bottom plot: Absolute discrepancy
-        ax_bot.plot(l1, diff_svm, color="royalblue", linewidth=1.8, label=r"$|\Delta \sigma_{\mathrm{vM}}|$")
-        ax_bot.axhline(0.0, color="gray", linestyle=":", linewidth=0.8)
-        ax_bot.set_xlabel(r"Principal Stretch $\lambda_1$ [-]", fontsize=10)
-        ax_bot.set_ylabel(r"$|\Delta \sigma_{\mathrm{vM}}|$ [MPa]", fontsize=9)
-        ax_bot.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
-        ax_bot.grid(True, linestyle="--", alpha=0.5)
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+# ===========================================================================
+# TASK 1.2 (Part 1): Invariants Validation (Plot 1: Calibration, Plot 2: Test)
+# ===========================================================================
+def plot_invariants_comparison(
+    preds_dict: dict,
+    inv_ref_dict: dict,
+    title_prefix: str = "Calibration Data",
+):
+    """
+    Task 1.2: Validates JAX-computed invariants against reference files in the
+    'invariants' folder. Both True (solid) and Computed (dashed) are plotted.
+    """
+    n_cases = len(preds_dict)
+    fig, axes = plt.subplots(
+        1, n_cases,
+        figsize=(5.5 * n_cases, 4.8),
+        layout="constrained",
+        sharey=False
+    )
+
+    if n_cases == 1:
+        axes = [axes]
+
+    inv_specs = [
+        (0, r"$I_1$", "#1f77b4"),  # Blue
+        (1, r"$J$",   "#2ca02c"),  # Green
+        (2, r"$I_4$", "#d62728"),  # Red
+        (3, r"$I_5$", "#9467bd"),  # Purple
+    ]
+
+    for ax, (case_name, pred_data) in zip(axes, preds_dict.items()):
+        inv_comp = np.array(pred_data["inv_pred"])  # shape (N, 4): [I1, J, I4, I5]
+        steps_comp = np.arange(len(inv_comp))
+
+        # --- DIRECT MATCHING LOGIC ---
+        # Grabs the explicitly assigned array from your manually loaded dictionary
+        inv_true = inv_ref_dict.get(case_name)
+        if inv_true is None:
+            print(f"[Plot Warning] No invariant reference found for '{case_name}'.")
+
+        # --- PLOTTING ---
+        for idx, lbl, color in inv_specs:
+            # 1. Plot Reference Invariant from folder (Thick semi-transparent solid line)
+            if inv_true is not None and inv_true.shape[-1] > idx:
+                # FIX: Independent x-axis prevents the (99,) vs (199,) dimension crash!
+                steps_true = np.arange(len(inv_true)) 
+                ax.plot(
+                    steps_true, inv_true[:, idx],
+                    color=color, linestyle="-", linewidth=3.5, alpha=0.4,
+                    label=f"{lbl} (Folder True)"
+                )
+
+            # 2. Plot JAX Computed Invariant (Dashed line with circle markers)
+            ax.plot(
+                steps_comp, inv_comp[:, idx],
+                color=color, linestyle="--", linewidth=1.6,
+                marker="o", markersize=4, markevery=max(1, len(steps_comp) // 12),
+                label=f"{lbl} (JAX Computed)"
+            )
+
+        ax.set_title(f"Case: {case_name}", fontsize=12, fontweight="bold")
+        ax.set_xlabel("Load Step / Time Step", fontsize=10)
+        if ax is axes[0]:
+            ax.set_ylabel(r"Invariants ($I_1, J, I_4, I_5$)", fontsize=10)
+        ax.grid(True, linestyle="--", alpha=0.45)
+
+        if ax is axes[-1]:
+            ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), fontsize=8.5)
 
     fig.suptitle(
-        f"{title_prefix} Dataset: von Mises Stress Validation ($\sigma_{{\mathrm{{vM}}}}^{{\mathrm{{true}}}}$ vs. $\sigma_{{\mathrm{{vM}}}}^{{\mathrm{{pred}}}}$)",
-        fontsize=14,
+        f"Task 1.2 - {title_prefix}: Invariants Validation",
+        fontsize=13,
         fontweight="bold"
     )
+    plt.show()
+# ===========================================================================
+# TASK 1.2 (Part 2): 1 Combined Plot for Strain Energy W Across All 5 Cases
+# ===========================================================================
+def plot_W_comparison(all_cases_true: dict, all_cases_pred: dict):
+    """
+    Task 1.2: 1 combined plot showing W_true vs. W_computed across load steps
+    for all 5 cases (3 calibration + 2 test).
+    """
+    fig, ax = plt.subplots(figsize=(9.5, 5.5), layout="constrained")
+    case_colors = plt.cm.tab10(np.linspace(0, 1, len(all_cases_true)))
+
+    for color, (case_name, true_data) in zip(case_colors, all_cases_true.items()):
+        W_true = np.array(true_data["W"])
+        W_comp = np.array(all_cases_pred[case_name]["W_pred"])
+        steps = np.arange(len(W_true))
+
+        # True W from dataset (Solid line)
+        ax.plot(
+            steps, W_true,
+            color=color, linestyle="-", linewidth=2.4, alpha=0.85,
+            label=f"{case_name} (True $W$)"
+        )
+        # Computed W from JAX (Dashed line with circle markers)
+        ax.plot(
+            steps, W_comp,
+            color=color, linestyle="--", linewidth=1.8,
+            marker="o", markersize=4, markevery=max(1, len(steps) // 12),
+            label=f"{case_name} (Computed $W$)"
+        )
+
+    ax.set_title("Task 1.2: Strain Energy Density $W$ (Computed vs. True) Across All 5 Load Cases", fontsize=13, fontweight="bold")
+    ax.set_xlabel("Load Step / Time Step", fontsize=11)
+    ax.set_ylabel(r"Strain Energy Density $W$", fontsize=11)
+    ax.grid(True, linestyle="--", alpha=0.45)
+    ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), fontsize=9)
+    plt.show()
+
+
+# ===========================================================================
+# TASK 1.2 (Part 3): Stress P (Computed grad W vs. True) Across All 5 Cases
+# ===========================================================================
+def plot_P_comparison(all_cases_true: dict, all_cases_pred: dict):
+    """
+    Task 1.2: Plots P_true vs. P_computed (from jax.grad(W)) vs. Load Step
+    across all 5 load cases. Plots ALL 9 components of the stress tensor.
+    """
+    n_cases = len(all_cases_true)
+    fig, axes = plt.subplots(
+        1, n_cases,
+        figsize=(5.5 * n_cases, 5.0), # slightly wider to fit the 2-column legend
+        layout="constrained",
+        sharey=False
+    )
+
+    if n_cases == 1:
+        axes = [axes]
+
+    # Generate 9 distinct colors for the 9 stress components
+    colors = plt.cm.tab10(np.linspace(0, 1, 9))
+    
+    comp_specs = [
+        (0, 0, "P_{11}", colors[0]),
+        (0, 1, "P_{12}", colors[1]),
+        (0, 2, "P_{13}", colors[2]),
+        (1, 0, "P_{21}", colors[3]),
+        (1, 1, "P_{22}", colors[4]),
+        (1, 2, "P_{23}", colors[5]),
+        (2, 0, "P_{31}", colors[6]),
+        (2, 1, "P_{32}", colors[7]),
+        (2, 2, "P_{33}", colors[8]),
+    ]
+
+    for ax, (case_name, true_data) in zip(axes, all_cases_true.items()):
+        P_true = np.array(true_data["P"])
+        P_comp = np.array(all_cases_pred[case_name]["P_pred"])
+        steps = np.arange(len(P_true))
+
+        for i, j, lbl, color in comp_specs:
+            # True Stress (Solid semi-transparent line)
+            ax.plot(
+                steps, P_true[:, i, j],
+                color=color, linestyle="-", linewidth=3.0, alpha=0.4,
+                label=rf"${lbl}$ True"
+            )
+            # JAX Computed Stress (Dashed line + circle markers)
+            ax.plot(
+                steps, P_comp[:, i, j],
+                color=color, linestyle="--", linewidth=1.6,
+                marker="o", markersize=3.5, markevery=max(1, len(steps) // 12),
+                label=rf"${lbl}$ JAX"
+            )
+
+        ax.axhline(0.0, color="gray", linestyle=":", linewidth=0.8)
+        ax.set_title(f"Case: {case_name}", fontsize=11, fontweight="bold")
+        ax.set_xlabel("Load Step / Time Step", fontsize=10)
+        
+        if ax is axes[0]:
+            ax.set_ylabel(r"First Piola-Kirchhoff Stress $P_{ij}$", fontsize=10)
+            
+        ax.grid(True, linestyle="--", alpha=0.45)
+        
+        if ax is axes[-1]:
+            # Use ncol=2 so the 18 legend entries don't run off the screen
+            ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), fontsize=8.5, ncol=2)
+
+    fig.suptitle(
+        r"Task 1.2: First Piola-Kirchhoff Stress $\mathbf{P} = \partial W / \partial \mathbf{F}$ (All 9 Components)",
+        fontsize=13,
+        fontweight="bold"
+    )
+    plt.show()
+
+def plot_stress_parity(dataset_dict: dict, pred_dict: dict, title_prefix: str = "Parity"):
+    """
+    Creates a separate standalone parity plot figure for each test case.
+    Within each plot, the 9 components of the Piola-Kirchhoff stress tensor 
+    are plotted with distinct colors.
+    """
+    component_labels = [
+        "P_{11}", "P_{12}", "P_{13}",
+        "P_{21}", "P_{22}", "P_{23}",
+        "P_{31}", "P_{32}", "P_{33}"
+    ]
+    # Get 9 visually distinct colors from the tab10 colormap
+    colors = plt.cm.tab10(np.linspace(0, 1, 9)) 
+    
+    for case_name, data in dataset_dict.items():
+        # Create a new figure for each load case
+        fig, ax = plt.subplots(figsize=(8, 5))
+        
+        P_true = np.array(data["P"])  # shape (N, 3, 3)
+        P_pred = np.array(pred_dict[case_name]["P_pred"])  # shape (N, 3, 3)
+        
+        # Calculate dynamic bounds for the current case
+        case_min = min(np.min(P_true), np.min(P_pred))
+        case_max = max(np.max(P_true), np.max(P_pred))
+        margin = (case_max - case_min) * 0.05
+        
+        # Draw the y = x perfect fit reference line
+        ax.plot([case_min - margin, case_max + margin], 
+                [case_min - margin, case_max + margin], 
+                color='gray', linestyle='--', zorder=0, label="Perfect Fit (y=x)")
+        
+        # Loop through the 3x3 tensor and plot each component separately
+        for i in range(3):
+            for j in range(3):
+                idx = i * 3 + j
+                ax.scatter(
+                    P_true[:, i, j], 
+                    P_pred[:, i, j], 
+                    alpha=0.7, 
+                    s=25, 
+                    color=colors[idx], 
+                    label=f"${component_labels[idx]}$"
+                )
+        
+        ax.set_xlim(case_min - margin, case_max + margin)
+        ax.set_ylim(case_min - margin, case_max + margin)
+        ax.set_xlabel("True Stress Components $P_{true}$")
+        ax.set_ylabel("Predicted Stress Components $P_{pred}$")
+        ax.set_title(f"{title_prefix}: {case_name}")
+        
+        # Place the legend outside the plot area to prevent overlapping data points
+        ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5), ncol=1)
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.show()
+
+def plot_componentwise_stress(dataset_dict: dict, pred_dict: dict, title_prefix: str = ""):
+    """
+    Plots the primary normal stress components (P11, P22, P33) against the 
+    data sample index to directly compare the numerical fit over the load paths.
+    """
+    num_cases = len(dataset_dict)
+    fig, axes = plt.subplots(nrows=num_cases, ncols=1, figsize=(10, 3 * num_cases), sharex=False)
+    
+    if num_cases == 1:
+        axes = [axes]
+
+    for ax, (case_name, data) in zip(axes, dataset_dict.items()):
+        P_true = np.array(data["P"])
+        P_pred = np.array(pred_dict[case_name]["P_pred"])
+        
+        samples = np.arange(P_true.shape[0])
+        
+        # Plot True Normal Stresses (Solid lines)
+        ax.plot(samples, P_true[:, 0, 0], 'b-', linewidth=2, label="$P_{11}$ True")
+        ax.plot(samples, P_true[:, 1, 1], 'g-', linewidth=2, label="$P_{22}$ True")
+        ax.plot(samples, P_true[:, 2, 2], 'r-', linewidth=2, label="$P_{33}$ True")
+        
+        # Plot Predicted Normal Stresses (Dashed lines)
+        ax.plot(samples, P_pred[:, 0, 0], 'b--', linewidth=2, label="$P_{11}$ Pred")
+        ax.plot(samples, P_pred[:, 1, 1], 'g--', linewidth=2, label="$P_{22}$ Pred")
+        ax.plot(samples, P_pred[:, 2, 2], 'r--', linewidth=2, label="$P_{33}$ Pred")
+        
+        ax.set_title(f"{title_prefix} - {case_name}")
+        ax.set_xlabel("Load Step / Data Index")
+        ax.set_ylabel("Stress Magnitude")
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+    plt.tight_layout()
     plt.show()
