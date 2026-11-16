@@ -13,6 +13,14 @@ from data import load_hyperelastic_data
 import losses as tl
 import models as tm
 from plot_recipes import plot_stress_parity, plot_componentwise_stress
+from verify_physics import (run_thermodynamic_assessment, 
+                            check_stress_free_reference, 
+                            plot_angular_momentum_parity,
+                            plot_reference_state_normalization,
+                            plot_predicted_strain_energy_non_negativity,
+                            plot_growth_condition,
+                            plot_polyconvex_parity,
+                            )
 
 now = datetime.datetime.now
 
@@ -38,14 +46,13 @@ def evaluate_model_on_dataset(model_, dataset_dict: dict, dataset_name: str):
     print("=" * 70)
 
     pred_dict = {}
-    batched_model = jax.vmap(model_)
 
     for case_name, data in dataset_dict.items():
         F = data["F"]
         P_true = data["P"]
 
         # Predict P using the trained FFNN
-        P_pred = batched_model(F)
+        P_pred = jax.vmap(model_)(F)
 
         diff_P = jnp.abs(P_pred - P_true)
         max_err_P = jnp.max(diff_P)
@@ -101,9 +108,9 @@ def main():
         model,
         (F_train, P_train),
         batch_size=32,
-        steps=10_000,
+        steps=50_000,
         loss_fn=tl.MSE(),
-        history=klax.HistoryCallback(log_every=100),
+        history=klax.HistoryCallback(log_every=1000),
         key=keys[1],
     )
 
@@ -117,6 +124,7 @@ def main():
     # 7. Finalize model for evaluation
     model_ = klax.finalize(model)
 
+
     # 8. Evaluate on Calibration and Test Datasets
     calib_preds = evaluate_model_on_dataset(model_, calib_data, "Calibration Data")
     test_preds = evaluate_model_on_dataset(model_, test_data, "Test Data")
@@ -125,12 +133,37 @@ def main():
     # Visual Stress Comparison (Component-wise & Parity)
     # -----------------------------------------------------------------------
     # Calibration evaluation
-    plot_stress_parity(calib_data, calib_preds, title_prefix="Task 2.2 Calibration")
-    plot_componentwise_stress(calib_data, calib_preds, title_prefix="Task 2.2 Calibration")
+    #plot_stress_parity(calib_data, calib_preds, title_prefix="Task 2.2 Calibration")
+    #plot_componentwise_stress(calib_data, calib_preds, title_prefix="Task 2.2 Calibration")
 
     # Test evaluation
-    plot_stress_parity(test_data, test_preds, title_prefix="Task 2.2 Test (Extrapolation)")
-    plot_componentwise_stress(test_data, test_preds, title_prefix="Task 2.2 Test (Extrapolation)")
+    #plot_stress_parity(test_data, test_preds, title_prefix="Task 2.2 Test (Extrapolation)")
+    #plot_componentwise_stress(test_data, test_preds, title_prefix="Task 2.2 Test (Extrapolation)")
+
+    # Run thermodynamic check on finalized model
+    #run_thermodynamic_assessment(model_)
+    #plot_predicted_strain_energy_non_negativity(model_)
+
+    # Evaluate stress-free reference condition on the calibrated model
+    #check_stress_free_reference(model_)
+    #plot_reference_state_normalization(model_)
+
+    # Evaluate angular momentum parity on the calibrated model
+    #plot_angular_momentum_parity(calib_data, calib_preds , title_prefix="Task 2.2 Angular Momentum Parity Check")
+    #plot_angular_momentum_parity(test_data, test_preds , title_prefix="Task 2.2 Angular Momentum Parity Check") 
+
+    # Evaluate growth condition on the calibrated model
+    #plot_growth_condition(model_)
+
+    # Parity plot on Calibration Cases (biaxial, pure_shear, uniaxial)
+    plot_polyconvex_parity(
+        calib_data, model_, title_prefix="Polyconvex Parity (Calibration)"
+    )
+
+    # Parity plot on Test / Extrapolation Cases (biax_test, mixed_test)
+    plot_polyconvex_parity(
+        test_data, model_, title_prefix="Polyconvex Parity (Test / Extrapolation)"
+    )
 
 
 if __name__ == "__main__":

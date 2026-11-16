@@ -8,6 +8,7 @@ from plot_recipes import (
     plot_invariants_comparison,
     plot_W_comparison,
     plot_P_comparison,
+    plot_grouped_raw_data,
 )
 
 # ---------------------------------------------------------------------------
@@ -175,6 +176,22 @@ def main():
 
     # Plot P (Computed vs. True) across all 5 cases
     plot_P_comparison(all_cases_true, all_cases_pred)
+
+    # Group 1: Biaxial vs Biax_test
+    group_1 = {
+        "biaxial": calib_data["biaxial"],
+        "biax_test": test_data["biax_test"]
+    }
+    plot_grouped_raw_data(group_1, title="Plot 1: Biaxial Calibration vs. Biaxial Test")
+
+    # Group 2: All pure modes + Mixed_test
+    group_2 = {
+        "biaxial": calib_data["biaxial"],
+        "uniaxial": calib_data["uniaxial"],
+        "pure_shear": calib_data["pure_shear"],
+        "mixed_test": test_data["mixed_test"]
+    }
+    plot_grouped_raw_data(group_2, title="Plot 2: Calibration Modes vs. Mixed Test")
 
 
 if __name__ == "__main__":

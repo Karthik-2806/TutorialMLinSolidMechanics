@@ -1,6 +1,94 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+import numpy as np
+import matplotlib.pyplot as plt
+
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.lines as mlines
+
+def plot_grouped_raw_data(group_dict: dict, title: str):
+    """
+    Plots F, P, and W for a specific group of load cases on a single set of shared axes.
+    Calibration cases are solid lines; Test cases are thick dashed lines.
+    """
+    fig, axes = plt.subplots(3, 1, figsize=(8, 12), layout="constrained")
+    ax_F, ax_P, ax_W = axes
+
+    comp_colors = plt.cm.tab10(np.linspace(0, 1, 9))
+    comp_labels = [
+        (0, 0, "11"), (0, 1, "12"), (0, 2, "13"),
+        (1, 0, "21"), (1, 1, "22"), (1, 2, "23"),
+        (2, 0, "31"), (2, 1, "32"), (2, 2, "33"),
+    ]
+
+    dataset_handles = []
+    colors_W = plt.cm.tab10(np.linspace(0, 1, len(group_dict)))
+
+    for col, (case_name, data) in enumerate(group_dict.items()):
+        F = np.array(data["F"])
+        P = np.array(data["P"])
+        W = np.array(data["W"])
+        
+        # Using raw load step index for the x-axis
+        steps = np.arange(len(W))
+
+        # Distinct styling for Test vs Calibration
+        is_test = "test" in case_name.lower()
+        
+        # ":" creates a dotted line, "-" creates a solid line
+        ls = ":" if is_test else "-"       
+        
+        lw = 2.5 if is_test else 1.5
+        alpha = 1.0  # 1.0 keeps all lines 100% bright/opaque
+        
+        # Add to custom dataset legend
+        dataset_handles.append(
+            mlines.Line2D([], [], color='black', linestyle=ls, linewidth=lw, alpha=alpha, label=case_name)
+        )
+        
+        # Add to custom dataset legend
+        dataset_handles.append(
+            mlines.Line2D([], [], color='black', linestyle=ls, linewidth=lw, alpha=alpha, label=case_name)
+        )
+
+        # Plot F and P (using the 9 component colors)
+        for idx, (i, j, lbl) in enumerate(comp_labels):
+            ax_F.plot(steps, F[:, i, j], color=comp_colors[idx], linestyle=ls, linewidth=lw, alpha=alpha)
+            ax_P.plot(steps, P[:, i, j], color=comp_colors[idx], linestyle=ls, linewidth=lw, alpha=alpha)
+            
+        # Plot W (using distinct colors per dataset)
+        ax_W.plot(steps, W, color=colors_W[col], linestyle=ls, linewidth=lw, alpha=alpha, label=case_name)
+
+    # Build custom legend for the 9 components
+    comp_handles = [
+        mlines.Line2D([], [], color=comp_colors[idx], linestyle='-', linewidth=2, label=rf"$_{{{lbl}}}$") 
+        for idx, (_, _, lbl) in enumerate(comp_labels)
+    ]
+
+    # Format F subplot
+    ax_F.set_title(f"Deformation Gradient F", fontsize=12, fontweight="bold")
+    ax_F.set_ylabel(r"Deformation $F_{ij}$", fontsize=10)
+    ax_F.grid(True, linestyle="--", alpha=0.4)
+    ax_F.legend(handles=dataset_handles + comp_handles, loc='center left', bbox_to_anchor=(1.02, 0.5), ncol=2, title="Datasets & Components")
+
+    # Format P subplot
+    ax_P.set_title(f"First Piola-Kirchhoff Stress P", fontsize=12, fontweight="bold")
+    ax_P.set_ylabel(r"Stress $P_{ij}$", fontsize=10)
+    ax_P.grid(True, linestyle="--", alpha=0.4)
+    ax_P.axhline(0.0, color="gray", linestyle=":", linewidth=0.8)
+    ax_P.legend(handles=dataset_handles + comp_handles, loc='center left', bbox_to_anchor=(1.02, 0.5), ncol=2)
+
+    # Format W subplot
+    ax_W.set_title(f"Strain Energy Density W", fontsize=12, fontweight="bold")
+    ax_W.set_xlabel("Load Step / Time Step", fontsize=10)
+    ax_W.set_ylabel(r"Energy $W$", fontsize=10)
+    ax_W.grid(True, linestyle="--", alpha=0.4)
+    ax_W.legend(loc='center left', bbox_to_anchor=(1.02, 0.5), title="Datasets")
+
+    fig.suptitle(title, fontsize=14, fontweight="bold")
+    plt.show()
 
 # ===========================================================================
 # TASK 1.1: Raw Data Visualization (F, P, W vs. Load Steps)
@@ -364,3 +452,8 @@ def plot_componentwise_stress(dataset_dict: dict, pred_dict: dict, title_prefix:
 
     plt.tight_layout()
     plt.show()
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+

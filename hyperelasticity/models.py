@@ -24,12 +24,10 @@ class NaiveFFNN(eqx.Module):
         self.layers = (
             klax.nn.Linear(6, 16, weight_init=he_normal(), key=keys[0]),
             klax.nn.Linear(16, 16, weight_init=he_normal(), key=keys[1]),
-            klax.nn.Linear(16, 16, weight_init=he_normal(), key=keys[2]),
             klax.nn.Linear(16, 9, weight_init=he_normal(), key=keys[3]),
         )
 
         self.activations = (
-            jax.nn.softplus,
             jax.nn.softplus,
             jax.nn.softplus,
             lambda x: x,
